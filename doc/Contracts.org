@@ -1,0 +1,148 @@
+* Overview
+  Source code: https://github.com/NFTCall-xyz/nftcall-core.git
+
+  Language: solidity
+  NFTCall is an NFT option product used for Physical delivery. NFT owner deposit their NFTs into a pool and receive benefits through the premium paid by the option buyer.
+  Option buyers buy call options on specified NFTs by paying a premium.
+
+  The NFT owner can ~deposit~ the NFT and receives the corresponding ERC721 ~nToken~. The option buyer receives a ~callToken~ for the corresponding option upon paying the premium.
+
+  The holder of ~nToken~ can ~withdraw~ the corresponding NFT at any time if no one has opened a position in the NFT.
+  If a position has already been opened, the holcan can call ~takeNFTOffMarket~ to avoid futhure openings.
+
+  The buyer specifies the strike price and expiration date via ~strikePriceGap~ and ~duration~, and then pays the premium to purchase a call option.
+  The premium is calculated based on the current NFT floor price, the strike price, and the expriation date. 10% of this premium is paid to the contract, and the remaining 90% is paid to the holder of the corresponding ~nToken~.
+  
+
+  During a ~callToken~'s exercisable time period, the holder can pay ~strikePrice~ to ~exercise~ the position and receive the corresponding NFT.
+  ~strikePrice~ will be paid in full to the ~nToken~ holder.
+
+* CallPool
+** public properties
+*** nft
+    the underlying NFT's address
+*** oracle
+    the oracle's address
+*** nToken
+    the nToken's address
+*** callToken
+    the callToken's address
+*** premium
+    the premium calculation contract's address
+*** exercisePeriodProportion
+    Percentage of the exercisable time period out of total duration.
+*** minimumPremiumToOwner
+    Minimum premium for the nToken holder at each position opening.
+** Methods
+*** balanceOf(address user) view returns (uint256)
+    Returns ETH from the user's account.
+*** checkAvailable(uint256 tokenId) view returns(bool)
+    Check if you can buy an option for a ~tokenId~.
+*** deposit(address onBehalfOf, uint256 tokenId)
+    Deposit the NFT, use the default gap and duration settings(10%, 28days), and the ~nToken~ minted is transferred to ~onBehalfOf~
+*** depositWithPreference(address onBehalfOf, uint256 tokenId, uint8 lowerStrikePriceGapIdx, uint8 upperDurationIdx, uint256 minimumStrikePrice)
+    The NFT is deposited with the given minimum strike price gap and maximum duration,
+    while the minimum strike price allowed to open a position is specified by ~minimumStrikePrice~ (i.e. ~NFT price at position opening * (1 + strike price gap / 10000) >= minimumStrikePrice~ ).
+    The minted ~nToken~ is transferred to ~onBehalfOf~.
+
+    the ~gap~ is an index and corresponds to the value as below:
+    | index | value |
+    |-------+-------|
+    |     0 |    0% |
+    |     1 |   10% |
+    |     2 |   20% |
+    |     3 |   30% |
+    |     4 |   50% |
+    |     5 |  100% |
+
+    the ~duration~ is also an index and corresponds to the value as below:
+    | index | value   |
+    |-------+---------|
+    |     0 | 3 days  |
+    |     1 | 7 days  |
+    |     2 | 14 days |
+    |     3 | 28 days |
+
+*** withdraw(address to, uint256 tokenId)
+    To withdraw the NFT with ~tokeId~ to ~to~. requires that the NFT is not opened with an option.
+    and that the caller must be the owner of the ~nToken~.
+
+*** withdrawETH(address to, uint256 amount) returns(uint256)
+    Withdraws the ETH from the caller's account to ~to~. If the ~amount~ is the maximum value of ~uint256~, then withdraws all the ETH from the account. Returns the total value withdrawn.
+
+*** takeNFTOffMarket(uint256 tokenId)
+    Removes an NFT from the openable NFT list. Must be called by the owner of that NFT. This will make it impossible to open new option on this NFT after the current option expires
+    (if any). The option that currently opened are not affected.
+
+*** relistNFT(uint256 tokenId)
+    Put an NFT back to the openable NFT list. Must be called by the owner of that NFT.
+
+*** previewOpenCall(uint256 tokenId, uint256 strikePriceGapIdx, uint256 durationIdx) view returns(uint256 strikePrice, uint256 premiumToOwner, uint256 premiumToReserve, uint256 errorCode)
+    Returns the fee to the call option to open with ~strikePriceGap~ and ~duration~.
+
+    * the ~strikePrice~ is the strike price for exercising the option.
+    * ~premiumToOwner~ and ~premiumToReserve~ are the premiums paid to the NFT owner and the contract.
+    * If the position cannot be opened, a non-zero error code will be returned in the ~errorCode~.
+
+*** openCall(uint256 tokenId, uint256 strikePriceGapIdx, uint256 durationIdx) payable
+    Open a call option for an NFT. The strike price is 
+    ~the price when the position was opened *(1+strikePriceGap/100000)~.
+    And it can be exercised during the 50%-100% of the duration corresponding to durationIdx.
+    
+    The ~stricPriceGap~ must be >= the minimum value of gap specified by the owner and the durationIdx must be <= the maximum value specified by the owner.
+    The strike price must also be >= the minimum strike price specified by the owner.
+    The premium calculated from the ~stricPriceGap~ and ~durationIdx~ must be paid, and the insufficient amount can be covered by the user's ETH assets in the pool.
+
+
+*** openCallBatch(uint256[] tokenIds, uint256[] strikePriceGaps, uint256[] durations) payable
+    Open call options for multiple NFTs, specifying the gap and duration with the ~strikePriceGaps~ and ~durations~ respectively.
+    A sufficient premium must be paid and the insufficient amount can be covered by the user's ETH assets in the pool.
+    If there are NFTs that cannot be opened, then the corresponding premiums will be refunded to the caller's ETH account in the pool.
+
+*** exerciseCall(uint256 tokenId) payable
+    The owner of the ~callToken~ receives the corresponding NFT by paying the strike price.
+
+*** getNFTStatus(uint256 tokenId)
+   Returns information on the status of an NFT option.
+
+   | Name                 | Type    | Description                                                 |
+   |----------------------+---------+-------------------------------------------------------------|
+   | ifOnMarket           | bool    | Whether it can be opend after the current option is expired |
+   | minimumsStrikeGapIdx | uint8   | Index of the minimum strike price gap                       |
+   | maximumDurationIdx   | uint8   | Index of the maximu duration                                |
+   | exerciseTime         | uint256 | Start time of the exercisable duration.                     |
+   | endTime              | uint256 | Expiration time.                                            |
+   | minimumStrikePrice   | uint256 | Minimum strike price.                                       |
+   | strikePrice          | uint256 | The strike price.                                           |
+
+** Storage of NFT Status
+   The NFT status are placed in a structure of type ~uint256~. The manipulation-related methods are in ~NFTStatus.sol~
+   
+   Where：
+   |    bits | types                  | description                         |
+   |---------+------------------------+-------------------------------------|
+   |     0-1 | 2bits unsigned integer | ~maximumDurationIdx~ , value: 0-3   |
+   |     2-4 | 3bits unsigned integer | ~minimumsStrikeGapIdx~ , value: 0-5 |
+   |       5 | bool                   | ~ifOnMarket~                        |
+   |       7 | bool                   | always be 1                         |
+   |   48-87 | uint40                 | ~exerciseTime~                      |
+   |  88-127 | uint40                 | ~endTime~                           |
+   | 128-192 | uint64                 | ~minimumStrikePrice~, 9 decimals    |
+   | 192-255 | uint64                 | ~strikePrice~, 9 decimals           |
+
+* NToken
+  ERC721 Token used to represent an NFT deposited in the pool.
+* CallToken
+  ERC721 Token used to represent a call option.
+* CallFatory
+  For deploying ~CallPool~
+* CallTokenFactory
+  For deploying ~CallToken~
+* NTokenFactory
+  For deploying ~NToken~
+* DataTypes
+  For common types used by multiply contracts.
+* NFTStatus
+  A library to manipulate the NFT status.
+* Premium
+  For calculating premiums.
