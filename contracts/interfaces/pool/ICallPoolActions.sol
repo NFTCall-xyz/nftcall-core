@@ -9,6 +9,7 @@ interface ICallPoolActions {
 
     function depositWithPreference(address onBehalfOf, uint256 tokenId, uint8 lowerStrikePriceGapIdx, uint8 upperDurationIdx, uint256 minimumStrikePrice) external;
 
+
     // Withdraw NFT
     function withdraw(address to, uint256 tokenId) external;
 

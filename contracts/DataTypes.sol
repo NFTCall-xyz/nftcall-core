@@ -19,7 +19,7 @@ library DataTypes {
         // bit 8-47: reserved
         // bit 48-87: exerciseTime
         // bit 88-127: endTime
-        // bit 128-192: minimumStrikePrice
+        // bit 128-191: minimumStrikePrice
         // bit 192-255: strikePrice
         uint256 data;
         /* uint8 nftPreferenceMap;

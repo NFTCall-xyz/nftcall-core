@@ -6,7 +6,9 @@ interface ICallFactory {
         address indexed erc721token,
         address oracle,
         address pool,
-        address premium);
+        address premium,
+        address ntoken,
+        address calltoken);
     
     function getPool(address erc721token) external view returns (address pool);
     function createPool(address erc721token, address oracle, address premium) external returns (address pool);

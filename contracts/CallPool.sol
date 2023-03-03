@@ -6,6 +6,7 @@ import {Pausable} from "@openzeppelin/contracts/security/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Enumerable.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {ICallPoolDeployer} from "./interfaces/ICallPoolDeployer.sol";
 import {ICallPool} from "./interfaces/ICallPool.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
@@ -16,6 +17,7 @@ import {NToken} from "./NToken.sol";
 import {Errors, ErrorCodes} from "./Errors.sol";
 import {DataTypes} from "./DataTypes.sol";
 import {NFTStatus} from "./NFTStatus.sol";
+import "hardhat/console.sol";
 
 contract CallPool is ICallPool, Pausable {
     using NFTStatus for DataTypes.NFTStatusMap; 
@@ -31,11 +33,11 @@ contract CallPool is ICallPool, Pausable {
     uint256 public constant INVALID_PRICE = type(uint256).max;
     uint256 public constant DECIMALS = 18;
 
-    // Assume that the price decimals is great than the strike price decimals.
+    // Assume that the price decimals is greater than the strike price decimals.
     // When the price decimals is less than the strike price decimals, 
     // please use: (DataTypes.STRIKE_PRICE_MAX / (10 ** (DataTypes.STRIKE_PRICE_DECIMALS - DECIMALS)));
     uint256 internal constant STRIKE_PRICE_SCALE = 10 ** (18 - 9);
-    uint256 public constant MAXIMUM_STRIKE_PRICE = uint256(type(uint64).max) * (10 **(18 - 9));
+    uint256 public constant MAXIMUM_STRIKE_PRICE = uint256(type(uint64).max) * STRIKE_PRICE_SCALE;
 
     uint256 private constant PRECISION = 1e5;
     uint256 private constant RESERVE = 1e4; // 10%
@@ -91,11 +93,13 @@ contract CallPool is ICallPool, Pausable {
     function activate() external onlyFactoryOwner {
         require(_deactivated, Errors.CP_ACTIVATED);
         _deactivated = false;
+        emit Activate(_msgSender());
     }
 
     function deactivate() external onlyFactoryOwner {
         require(!_deactivated, Errors.CP_DEACTIVATED);
         _deactivated = true;
+        emit Deactivate(_msgSender());
     }
 
     function balanceOf(address user) public view override returns (uint256) {
@@ -116,7 +120,8 @@ contract CallPool is ICallPool, Pausable {
 
     // Deposit NFT
     function deposit(address onBehalfOf, uint256 tokenId) external override whenNotPaused whenActivated {
-        _deposit(onBehalfOf, tokenId, 1, 3, 0);
+        uint256 errorCode = _deposit(onBehalfOf, tokenId, 1, 3, 0);
+        require(errorCode == 0, Strings.toString(errorCode));
     }
 
     function depositWithPreference(
@@ -126,7 +131,8 @@ contract CallPool is ICallPool, Pausable {
         uint8 upperDurationIdx,
         uint256 minimumStrikePrice
     ) external override whenNotPaused whenActivated {
-        _deposit(onBehalfOf, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice);
+        uint256 errorCode = _deposit(onBehalfOf, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice);
+        require(errorCode == 0, Strings.toString(errorCode));
     }
 
     function _deposit(
@@ -135,8 +141,10 @@ contract CallPool is ICallPool, Pausable {
         uint8 minimumStrikePriceGapIdx,
         uint8 maximumDurationIdx,
         uint256 minimumStrikePrice
-    ) internal {
-        require(minimumStrikePrice <= MAXIMUM_STRIKE_PRICE, Errors.CP_PRICE_TOO_HIGH);
+    ) internal returns(uint256){
+        if(minimumStrikePrice > MAXIMUM_STRIKE_PRICE){
+            return ErrorCodes.CP_PRICE_TOO_HIGH;
+        }
         DataTypes.NFTStatusMap memory status = DataTypes.NFTStatusMap(DataTypes.NFT_STATUS_MAP_INIT_VALUE);
         status.setIfOnMarket(true);
         status.setMinimumStrikePriceGapIdx(minimumStrikePriceGapIdx);
@@ -145,23 +153,38 @@ contract CallPool is ICallPool, Pausable {
         nftStatus[tokenId].data = status.data;
 
         CallToken(callToken).mint(nToken, tokenId);
+        emit Deposit(nft, _msgSender(), onBehalfOf, tokenId);
+        emit PreferenceUpdated(nft, tokenId, minimumStrikePriceGapIdx, maximumDurationIdx, minimumStrikePrice);
         NToken(nToken).mint(onBehalfOf, tokenId);
         IERC721(nft).transferFrom(_msgSender(), nToken, tokenId);
 
-        emit Deposit(nft, _msgSender(), onBehalfOf, tokenId);
-        emit PreferenceUpdated(nft, tokenId, minimumStrikePriceGapIdx, maximumDurationIdx, minimumStrikePrice);
+        
+        return 0;
     }
 
     // Withdraw NFT
     function withdraw(address to, uint256 tokenId) external override whenNotPaused {
-        // Burn NToken
-        require(NToken(nToken).ownerOf(tokenId) == _msgSender(), Errors.CP_NOT_THE_OWNER);
+        uint256 errorCode = _withdraw(_msgSender(), to, tokenId, block.timestamp);
+        require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    // Withdraw NFT
+    function _withdraw(address user, address to, uint256 tokenId, uint256 currentTime) internal returns(uint256) {
+        
+        if(NToken(nToken).ownerOf(tokenId) != user){
+            return ErrorCodes.CP_NOT_THE_OWNER;
+        }
         // Check requirements: not commited to a call, etc.
-        require(uint256(nftStatus[tokenId].getEndTime()) < block.timestamp, Errors.CP_NFT_ON_MARKET_OR_UNABAILABLE);
+        if(uint256(nftStatus[tokenId].getEndTime()) >= currentTime){
+            return ErrorCodes.CP_NFT_ON_MARKET_OR_UNAVAILABLE;
+        }
         delete nftStatus[tokenId];
         CallToken(callToken).burn(tokenId);
-        NToken(nToken).burn(_msgSender(), to, tokenId);
-        emit Withdraw(nft, _msgSender(), to, tokenId);
+
+        emit Withdraw(nft, user, to, tokenId);
+        // Burn NToken
+        NToken(nToken).burn(user, to, tokenId);
+        return 0;
     }
 
     /**
@@ -171,7 +194,7 @@ contract CallPool is ICallPool, Pausable {
    */
     function _safeTransferETH(address to, uint256 value) internal {
         (bool success, ) = to.call{value: value}(new bytes(0));
-        require(success);
+        require(success, Errors.CP_UNABLE_TO_TRANSFER_ETH);
     }
 
     function withdrawETH(
@@ -187,26 +210,43 @@ contract CallPool is ICallPool, Pausable {
         require(amount <= userBalance, Errors.CP_NOT_ENOUGH_BALANCE);
         address user = _msgSender();
         _balanceOf[user] = userBalance - amount;
-        _safeTransferETH(to, amount);
         emit WithdrawETH(_msgSender(), to, amount);
         emit BalanceChangedETH(user, _balanceOf[user]);
+        _safeTransferETH(to, amount);
+        
         return amount;
     }
 
     function takeNFTOffMarket(uint256 tokenId) external override whenNotPaused {
-        require(NToken(nToken).ownerOf(tokenId) == _msgSender(), Errors.CP_NOT_THE_OWNER);
+        uint256 errorCode = _takeNFTOffMarket(_msgSender(), tokenId);
+        require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    function _takeNFTOffMarket(address user, uint256 tokenId) internal returns(uint256) {
+        if(NToken(nToken).ownerOf(tokenId) != user){
+            return ErrorCodes.CP_NOT_THE_OWNER;
+        }
         DataTypes.NFTStatusMap memory status = nftStatus[tokenId];
         status.setIfOnMarket(false);
         nftStatus[tokenId].data = status.data;
-        emit OffMarket(nft, _msgSender(), tokenId);
+        emit OffMarket(nft, user, tokenId);
+        return 0;
     }
 
     function relistNFT(uint256 tokenId) external override whenNotPaused whenActivated {
-        require(NToken(nToken).ownerOf(tokenId) == _msgSender(), Errors.CP_NOT_THE_OWNER);
+        uint256 errorCode = _relistNFT(_msgSender(), tokenId);
+        require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    function _relistNFT(address user, uint256 tokenId) internal returns(uint256) {
+        if(NToken(nToken).ownerOf(tokenId) != user){
+            return ErrorCodes.CP_NOT_THE_OWNER;
+        }
         DataTypes.NFTStatusMap memory status = nftStatus[tokenId];
         status.setIfOnMarket(true);
         nftStatus[tokenId].data = status.data;
-        emit OnMarket(nft, _msgSender(), tokenId);
+        emit OnMarket(nft, user, tokenId);
+        return 0;
     }
 
     struct OpenCallLocalVars {
@@ -229,12 +269,12 @@ contract CallPool is ICallPool, Pausable {
             vars.premiumToReserve,
             vars.errorCode
         ) = previewOpenCall(tokenId, strikePriceGapIdx, durationIdx);
-        require(vars.errorCode == 0, Errors.CP_CAN_NOT_OPEN_CALL);
+        require(vars.errorCode == 0, Strings.toString(vars.errorCode));
         address user = _msgSender();
         uint256 totalPremium = vars.premiumToOwner + vars.premiumToReserve;
         if(msg.value != totalPremium){
-            require(totalPremium <= _balanceOf[user] + msg.value, Errors.CP_DID_NOT_SEND_ENOUGHT_ETH);
-            _balanceOf[user] = _balanceOf[user] + msg.value - totalPremium;
+            require(totalPremium < msg.value, Errors.CP_DID_NOT_SEND_ENOUGH_ETH);
+            _balanceOf[user] += msg.value - totalPremium;
             emit BalanceChangedETH(user, _balanceOf[user]);
         }
         address owner = IERC721(nToken).ownerOf(tokenId);
@@ -256,6 +296,7 @@ contract CallPool is ICallPool, Pausable {
         uint8[] calldata strikePriceGaps,
         uint8[] calldata durations
     ) external payable override whenNotPaused whenActivated {
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         require(tokenIds.length == strikePriceGaps.length && tokenIds.length == durations.length, Errors.CP_ARRAY_LENGTH_UNMATCHED);
         uint256 totalPremium = 0;
         uint256 totalReservePremium = 0;
@@ -284,8 +325,8 @@ contract CallPool is ICallPool, Pausable {
         _balanceOf[pool] += totalReservePremium;
         emit BalanceChangedETH(pool, _balanceOf[pool]);
         if(msg.value != totalPremium){
-            require(_balanceOf[user] + msg.value >= totalPremium, Errors.CP_DID_NOT_SEND_ENOUGHT_ETH);
-            _balanceOf[user] = _balanceOf[user] + msg.value - totalPremium;
+            require(msg.value > totalPremium, Errors.CP_DID_NOT_SEND_ENOUGH_ETH);
+            _balanceOf[user] += msg.value - totalPremium;
             emit BalanceChangedETH(user, _balanceOf[user]);
         }
     }
@@ -305,6 +346,7 @@ contract CallPool is ICallPool, Pausable {
 
     function previewOpenCallBatch( uint256[] calldata tokenIds, uint8[] calldata strikePriceGaps, uint8[] calldata durations) public override view
         returns( uint256[] memory strikePrices, uint256[] memory premiumsToOwner, uint256[] memory premiumsToReserve, uint256[] memory errorCodes) {
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         require(tokenIds.length == strikePriceGaps.length && tokenIds.length == durations.length, Errors.CP_ARRAY_LENGTH_UNMATCHED);
         strikePrices = new uint256[](tokenIds.length);
         premiumsToOwner = new uint256[](tokenIds.length);
@@ -333,7 +375,7 @@ contract CallPool is ICallPool, Pausable {
             errorCode = ErrorCodes.CP_CAN_NOT_OPEN_A_POSITION_ON_SELF_OWNED_NFT;
         }
         else if(!status.getIfOnMarket() || (block.timestamp <= uint256(status.getEndTime()))){
-            errorCode = ErrorCodes.CP_NFT_ON_MARKET_OR_UNABAILABLE;
+            errorCode = ErrorCodes.CP_NFT_ON_MARKET_OR_UNAVAILABLE;
         }
         else if(strikePriceGapIdx < status.getMinimumStrikePriceGapIdx()){
             errorCode = ErrorCodes.CP_STRIKE_GAP_TOO_LOW;
@@ -344,7 +386,7 @@ contract CallPool is ICallPool, Pausable {
         else {
             uint256 openPrice;
             (openPrice, premiumToReserve, premiumToOwner) = _calculatePremium(strikePriceGapIdx, durationIdx);
-            if(premiumToOwner <= minimumPremiumToOwner){
+            if(premiumToOwner < minimumPremiumToOwner){
                 errorCode = ErrorCodes.CP_TOO_LITTLE_PREMIUM_TO_OWNER;
             }
             else{
@@ -378,39 +420,59 @@ contract CallPool is ICallPool, Pausable {
 
     // Exercise a call position
     function exerciseCall(uint256 tokenId) external payable override whenNotPaused whenActivated {
+        (uint256 errorCode, uint256 remainValue) = _exerciseCall(_msgSender(), tokenId, msg.value, block.timestamp);
+        require(errorCode == 0, Strings.toString(errorCode));
+        require(remainValue == 0, Errors.CP_DID_NOT_SEND_ENOUGH_ETH);
+    }
+
+    // Exercise a call position
+    function _exerciseCall(address user, uint256 tokenId, uint256 value, uint256 currentTime) internal returns(uint256 errorCode, uint256 remainValue){
         DataTypes.NFTStatusMap storage status = nftStatus[tokenId];
         uint256 strikePrice = convertFromStrikePrice(status.getStrikePrice());
-        require(uint256(status.getEndTime()) >= block.timestamp && uint256(status.getExerciseTime()) <= block.timestamp, Errors.CP_NOT_IN_THE_EXERCISE_PERIOD);
-        require(CallToken(callToken).ownerOf(tokenId) == _msgSender(), Errors.CP_NOT_THE_OWNER);
-        require(strikePrice == msg.value, Errors.CP_DID_NOT_SEND_ENOUGHT_ETH);
+        if(uint256(status.getEndTime()) < currentTime || uint256(status.getExerciseTime()) > currentTime){
+            return (ErrorCodes.CP_NOT_IN_THE_EXERCISE_PERIOD, value);
+        }
+        if(CallToken(callToken).ownerOf(tokenId) != user){
+            return (ErrorCodes.CP_NOT_THE_OWNER, value);
+        }
+        if(strikePrice > value){
+            return (ErrorCodes.CP_DID_NOT_SEND_ENOUGH_ETH, value);
+        }
         // Burn CallToken
         CallToken(callToken).burn(tokenId);
         delete nftStatus[tokenId];
-        // Burn NToken and transfer underlying NFT
         address originalOwner = NToken(nToken).ownerOf(tokenId);
 
         // Pay strike price to NToken owner
         _balanceOf[originalOwner] += strikePrice;
 
         emit BalanceChangedETH(originalOwner, _balanceOf[originalOwner]);
-        NToken(nToken).burn(originalOwner, _msgSender(), tokenId);
+        emit CallClosed(nft, user, originalOwner, tokenId, strikePrice);
+        // Burn NToken and transfer underlying NFT
+        NToken(nToken).burn(originalOwner, user, tokenId);
         
-        emit CallClosed(nft, _msgSender(), originalOwner, tokenId, strikePrice);
+        return (0, value - strikePrice);
     }
 
     function collectProtocol(
         address recipient,
         uint256 amountRequested
     ) external override onlyFactoryOwner returns (uint256 amountSent) {
+        require(recipient != address(0), Errors.CP_INVALID_RECEIVER);
+        require(amountRequested != 0, Errors.CP_INVALID_AMOUNT);
         uint256 balance = _balanceOf[address(this)];
         amountSent = amountRequested > balance ? balance : amountRequested;
         if (amountSent > 0) {
             address pool = address(this);
             _balanceOf[pool] -= amountSent;
             emit BalanceChangedETH(pool, _balanceOf[pool]);
-            _safeTransferETH(recipient, amountSent);
             emit CollectProtocol(_msgSender(), recipient, amountSent);
+            _safeTransferETH(recipient, amountSent);
         }
+    }
+
+    function transferERC721(address collection, address recipient, uint256 tokenId) external override onlyFactoryOwner {
+        NToken(nToken).transferERC721(collection, recipient, tokenId);
     }
 
     function _calculatePremium(
@@ -437,7 +499,11 @@ contract CallPool is ICallPool, Pausable {
     }
 
     function getNFTStatus(uint256 tokenId) external view override returns (DataTypes.NFTStatusOutput memory) {
-        require(IERC721(nToken).ownerOf(tokenId) != address(0), Errors.CP_NFT_ON_MARKET_OR_UNABAILABLE);
+        return _getNFTStatus(tokenId);
+    }
+
+    function _getNFTStatus(uint256 tokenId) internal view returns (DataTypes.NFTStatusOutput memory) {
+        require(IERC721(nToken).ownerOf(tokenId) != address(0), Errors.CP_NFT_ON_MARKET_OR_UNAVAILABLE);
         DataTypes.NFTStatusMap storage _status = nftStatus[tokenId];
         DataTypes.NFTStatusOutput memory status = DataTypes.NFTStatusOutput(
             _status.getIfOnMarket(),
@@ -458,15 +524,35 @@ contract CallPool is ICallPool, Pausable {
         uint256 minimumStrikePrice
     ) external override whenNotPaused whenActivated {
         address user = _msgSender();
-        require(NToken(nToken).ownerOf(tokenId) == user, Errors.CP_NOT_THE_OWNER);
-        require(block.timestamp >= uint256(nftStatus[tokenId].getEndTime()), Errors.CP_NFT_ON_MARKET_OR_UNABAILABLE);
-        require(minimumStrikePrice <= MAXIMUM_STRIKE_PRICE, Errors.CP_PRICE_TOO_HIGH);
+        uint256 currentTime = block.timestamp;
+        uint256 errorCode = _changePreference(user, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice, currentTime);
+        require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    function _changePreference(
+        address user,
+        uint256 tokenId,
+        uint8 lowerStrikePriceGapIdx,
+        uint8 upperDurationIdx,
+        uint256 minimumStrikePrice,
+        uint256 currentTime
+    ) internal returns(uint256) {
+        if(NToken(nToken).ownerOf(tokenId) != user){
+            return ErrorCodes.CP_NOT_THE_OWNER;
+        }
+        if(currentTime <= uint256(nftStatus[tokenId].getEndTime())){
+            return ErrorCodes.CP_NFT_ON_MARKET_OR_UNAVAILABLE;
+        }
+        if(minimumStrikePrice > MAXIMUM_STRIKE_PRICE){
+            return ErrorCodes.CP_PRICE_TOO_HIGH;
+        }
         DataTypes.NFTStatusMap memory status = nftStatus[tokenId];
         status.setMinimumStrikePriceGapIdx(lowerStrikePriceGapIdx);
         status.setMaximumDurationIdx(upperDurationIdx);
         status.setMinimumStrikePrice(convertToStrikePrice(minimumStrikePrice));
         nftStatus[tokenId].data = status.data;
         emit PreferenceUpdated(nft, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice);
+        return 0;
     }
 
     function totalOpenInterest() external view override returns(uint256) {

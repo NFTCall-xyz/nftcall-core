@@ -9,3 +9,4 @@ contract NTokenFactory {
         nToken = address(new NToken{salt: salt}());
     }
 }
+

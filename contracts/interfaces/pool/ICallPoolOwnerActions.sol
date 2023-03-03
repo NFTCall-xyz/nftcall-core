@@ -8,4 +8,10 @@ interface ICallPoolOwnerActions {
         address recipient,
         uint256 amountRequested
     ) external returns (uint256 amountSent);
+
+    function transferERC721(
+        address collection,
+        address recipient,
+        uint256 tokenId
+    ) external;
 }
