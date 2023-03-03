@@ -123,6 +123,15 @@ contract CallPool is ICallPool, Pausable {
         require(errorCode == 0, Strings.toString(errorCode));
     }
 
+    function depositBatch(address onBehalfOf, uint256[] calldata tokenIds) external override  whenNotPaused whenActivated returns(uint256[] memory) {
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; ++i) {
+            errorCodes[i] = _deposit(onBehalfOf, tokenIds[i], 1, 3, 0);
+        }
+        return errorCodes;
+    }
+
     function depositWithPreference(
         address onBehalfOf,
         uint256 tokenId,
@@ -132,6 +141,25 @@ contract CallPool is ICallPool, Pausable {
     ) external override whenNotPaused whenActivated {
         uint256 errorCode = _deposit(onBehalfOf, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice);
         require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    function depositWithPreferenceBatch(
+        address onBehalfOf,
+        uint256[] calldata tokenIds,
+        uint8[] calldata lowerStrikePriceGapIdxList,
+        uint8[] calldata upperDurationIdxList,
+        uint256[] calldata minimumStrikePriceList
+    ) external override whenNotPaused whenActivated returns(uint256[] memory){
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        require(tokenIds.length == lowerStrikePriceGapIdxList.length 
+                && tokenIds.length == upperDurationIdxList.length 
+                && tokenIds.length == minimumStrikePriceList.length
+                , Errors.CP_ARRAY_LENGTH_UNMATCHED);
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        for(uint256 i=0; i < tokenIds.length; ++i){
+            errorCodes[i] = _deposit(onBehalfOf, tokenIds[i], lowerStrikePriceGapIdxList[i], upperDurationIdxList[i], minimumStrikePriceList[i]);
+        }
+        return errorCodes;
     }
 
     function _deposit(
@@ -165,6 +193,18 @@ contract CallPool is ICallPool, Pausable {
     function withdraw(address to, uint256 tokenId) external override whenNotPaused {
         uint256 errorCode = _withdraw(_msgSender(), to, tokenId, block.timestamp);
         require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    // Withdraw NFT
+    function withdrawBatch(address to, uint256[] calldata tokenIds) external override whenNotPaused returns(uint256[] memory){
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        address user = _msgSender();
+        uint256 currentTime = block.timestamp;
+        for(uint256 i = 0; i < tokenIds.length; ++i){
+            errorCodes[i] = _withdraw(user, to, tokenIds[i], currentTime);
+        }
+        return errorCodes;
     }
 
     // Withdraw NFT
@@ -221,6 +261,16 @@ contract CallPool is ICallPool, Pausable {
         require(errorCode == 0, Strings.toString(errorCode));
     }
 
+    function takeNFTOffMarketBatch(uint256[] calldata tokenIds) external override whenNotPaused returns(uint256[] memory){
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        address user = _msgSender();
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; ++i){
+            errorCodes[i] = _takeNFTOffMarket(user, tokenIds[i]);
+        }
+        return errorCodes;
+    }
+
     function _takeNFTOffMarket(address user, uint256 tokenId) internal returns(uint256) {
         if(NToken(nToken).ownerOf(tokenId) != user){
             return ErrorCodes.CP_NOT_THE_OWNER;
@@ -235,6 +285,16 @@ contract CallPool is ICallPool, Pausable {
     function relistNFT(uint256 tokenId) external override whenNotPaused whenActivated {
         uint256 errorCode = _relistNFT(_msgSender(), tokenId);
         require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    function relistNFTBatch(uint256[] calldata tokenIds) external override whenNotPaused whenActivated returns(uint256[] memory){
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        address user = _msgSender();
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; ++i){
+            errorCodes[i] = _relistNFT(user, tokenIds[i]);
+        }
+        return errorCodes;
     }
 
     function _relistNFT(address user, uint256 tokenId) internal returns(uint256) {
@@ -425,6 +485,24 @@ contract CallPool is ICallPool, Pausable {
     }
 
     // Exercise a call position
+    // To avoid reentrancy attack, we can not use the amount in the _balanceOf[user] to pay the strike price.
+    function exerciseCallBatch(uint256[] calldata tokenIds) external payable override whenNotPaused whenActivated returns(uint256[] memory){
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        address user = _msgSender();
+        uint256 remainValue = msg.value;
+        uint256 currentTime = block.timestamp;
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; ++ i){
+            (errorCodes[i], remainValue) = _exerciseCall(_msgSender(), tokenIds[i], remainValue, currentTime);
+        }
+        if(remainValue > 0){
+            _balanceOf[user] += remainValue;
+            emit BalanceChangedETH(user, _balanceOf[user]);
+        }
+        return errorCodes;
+    }
+
+    // Exercise a call position
     function _exerciseCall(address user, uint256 tokenId, uint256 value, uint256 currentTime) internal returns(uint256 errorCode, uint256 remainValue){
         DataTypes.NFTStatusMap storage status = nftStatus[tokenId];
         uint256 strikePrice = convertFromStrikePrice(status.getStrikePrice());
@@ -497,6 +575,15 @@ contract CallPool is ICallPool, Pausable {
         return _getNFTStatus(tokenId);
     }
 
+    function getNFTStatusBatch(uint256[] calldata tokenIds) external view override returns (DataTypes.NFTStatusOutput[] memory) {
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        DataTypes.NFTStatusOutput[] memory statuses = new DataTypes.NFTStatusOutput[](tokenIds.length);
+        for(uint256 i = 0; i < tokenIds.length; ++i){
+            statuses[i] = _getNFTStatus(tokenIds[i]);
+        }
+        return statuses;
+    }
+
     function _getNFTStatus(uint256 tokenId) internal view returns (DataTypes.NFTStatusOutput memory) {
         require(IERC721(nToken).ownerOf(tokenId) != address(0), Errors.CP_NFT_ON_MARKET_OR_UNAVAILABLE);
         DataTypes.NFTStatusMap storage _status = nftStatus[tokenId];
@@ -522,6 +609,26 @@ contract CallPool is ICallPool, Pausable {
         uint256 currentTime = block.timestamp;
         uint256 errorCode = _changePreference(user, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice, currentTime);
         require(errorCode == 0, Strings.toString(errorCode));
+    }
+
+    function changePreferenceBatch(
+        uint256[] calldata tokenIds,
+        uint8[] calldata lowerStrikePriceGapIdxList,
+        uint8[] calldata upperDurationIdxList,
+        uint256[] calldata minimumStrikePriceList
+    ) external override whenNotPaused whenActivated returns(uint256[] memory){
+        require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
+        require(tokenIds.length == lowerStrikePriceGapIdxList.length 
+                && tokenIds.length == upperDurationIdxList.length 
+                && tokenIds.length == minimumStrikePriceList.length
+                , Errors.CP_ARRAY_LENGTH_UNMATCHED);
+        uint256[] memory errorCodes = new uint256[](tokenIds.length);
+        address user = _msgSender();
+        uint256 currentTime = block.timestamp;
+        for(uint256 i=0; i < tokenIds.length; ++i){
+            errorCodes[i] = _changePreference(user, tokenIds[i], lowerStrikePriceGapIdxList[i], upperDurationIdxList[i], minimumStrikePriceList[i], currentTime);
+        }
+        return errorCodes;
     }
 
     function _changePreference(

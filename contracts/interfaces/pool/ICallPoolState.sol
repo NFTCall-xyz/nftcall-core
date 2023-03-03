@@ -13,6 +13,8 @@ interface ICallPoolState {
     // Get NFTStatus
     function getNFTStatus(uint256 tokenId) external view returns (DataTypes.NFTStatusOutput memory);
 
+    function getNFTStatusBatch(uint256[] memory tokenIds) external view returns (DataTypes.NFTStatusOutput[] memory);
+
     function previewOpenCall( uint256 tokenId, uint8 strikePriceGapIdx, uint8 durationIdx) external view 
         returns( uint256 strikePrice, uint256 premiumToOwner, uint256 premiumToReserve, uint256 errorCode );
 
