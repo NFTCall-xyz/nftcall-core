@@ -36,14 +36,14 @@ contract NToken is ERC721, INToken, Ownable, IERC721Receiver {
 
     function burn(address user, address receiverOfUnderlying, uint256 tokenId) public override onlyOwner{
         _burn(tokenId);
-        IERC721(nft).safeTransferFrom(address(this), receiverOfUnderlying, tokenId);
         emit Burn(user, receiverOfUnderlying, tokenId);
+        IERC721(nft).safeTransferFrom(address(this), receiverOfUnderlying, tokenId);
     }
 
     function transferERC721(address collection, address recipient, uint256 tokenId) public override onlyOwner{
         require(collection != nft || !_exists(tokenId), "Can only transfer NFT that have been accidentally sent.");
         require(recipient != address(0), "Cannot use zero address as recipient.");
-        IERC721(nft).safeTransferFrom(address(this), recipient, tokenId);
+        IERC721(collection).safeTransferFrom(address(this), recipient, tokenId);
     }
 
     function onERC721Received(
