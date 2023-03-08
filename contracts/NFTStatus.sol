@@ -2,7 +2,7 @@
 pragma solidity 0.8.9;
 
 import {Errors} from './Errors.sol';
-import {DataTypes} from './DataTypes.sol';
+import {DataTypes, MAXIMUM_VALID_DURATION_IDX, MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX} from './DataTypes.sol';
 
 /**
  * @title ReserveConfiguration library
@@ -29,7 +29,7 @@ library NFTStatus {
 
   
   function setMaximumDurationIdx(DataTypes.NFTStatusMap memory self, uint8 durationIdx) internal pure {
-    require(durationIdx <= uint8(DataTypes.MAXIMUM_VALID_DURATION_IDX), Errors.CP_GAP_OR_DURATION_OUT_OF_INDEX);
+    require(durationIdx <= uint8(MAXIMUM_VALID_DURATION_IDX), Errors.CP_GAP_OR_DURATION_OUT_OF_INDEX);
     self.data = (self.data & MAXIMUM_DURATION_IDX_MASK) | uint256(durationIdx);
   }
 
@@ -39,7 +39,7 @@ library NFTStatus {
 
   function setMinimumStrikePriceGapIdx(DataTypes.NFTStatusMap memory self, uint8 strikePriceGapIdx) internal pure
   {
-    require(strikePriceGapIdx <= uint8(DataTypes.MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX), Errors.CP_GAP_OR_DURATION_OUT_OF_INDEX);
+    require(strikePriceGapIdx <= uint8(MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX), Errors.CP_GAP_OR_DURATION_OUT_OF_INDEX);
 
     self.data =
       (self.data & MINIMUM_STRIKE_PRICE_GAP_IDX_MASK) |

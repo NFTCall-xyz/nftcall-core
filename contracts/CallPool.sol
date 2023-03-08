@@ -15,9 +15,8 @@ import {ICallToken} from "./interfaces/ICallToken.sol";
 import {CallToken} from "./CallToken.sol";
 import {NToken} from "./NToken.sol";
 import {Errors, ErrorCodes} from "./Errors.sol";
-import {DataTypes} from "./DataTypes.sol";
+import {DataTypes, MAXIMUM_VALID_DURATION_IDX, MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX, STRIKE_PRICE_DECIMALS, MAXIMUM_STRIKE_PRICE} from "./DataTypes.sol";
 import {NFTStatus} from "./NFTStatus.sol";
-import "hardhat/console.sol";
 
 contract CallPool is ICallPool, Pausable {
     using NFTStatus for DataTypes.NFTStatusMap; 
@@ -36,19 +35,19 @@ contract CallPool is ICallPool, Pausable {
     // Assume that the price decimals is greater than the strike price decimals.
     // When the price decimals is less than the strike price decimals, 
     // please use: (DataTypes.STRIKE_PRICE_MAX / (10 ** (DataTypes.STRIKE_PRICE_DECIMALS - DECIMALS)));
-    uint256 internal constant STRIKE_PRICE_SCALE = 10 ** (18 - 9);
-    uint256 public constant MAXIMUM_STRIKE_PRICE = uint256(type(uint64).max) * STRIKE_PRICE_SCALE;
+    uint256 internal constant STRIKE_PRICE_SCALE = 10 ** (DECIMALS - STRIKE_PRICE_DECIMALS);
+    uint256 public constant MAXIMUM_STRIKE_PRICE_IN_CONTRACT_DECIMALS = uint256(type(uint64).max) * STRIKE_PRICE_SCALE;
 
     uint256 private constant PRECISION = 1e5;
     uint256 private constant RESERVE = 1e4; // 10%
 
     function STRIKE_PRICE_GAP(uint8 strikePriceGapIdx) public pure returns(uint256) {
-        uint24[6] memory strikePriceGaps = [0, 1e4, 2*1e4, 3*1e4, 5*1e4, 1e5]; // [0% 10% 20% 30% 50% 100%]
+        uint24[MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX + 1] memory strikePriceGaps = [0, 1e4, 2*1e4, 3*1e4, 5*1e4, 1e5]; // [0% 10% 20% 30% 50% 100%]
         return uint256(strikePriceGaps[strikePriceGapIdx]);
     }
 
     function DURATION(uint8 durationIdx) public pure returns(uint40) {
-        uint40[4] memory durations = [uint40(3 days), uint40(7 days), uint40(14 days), uint40(28 days)];
+        uint40[MAXIMUM_VALID_DURATION_IDX + 1] memory durations = [uint40(3 days), uint40(7 days), uint40(14 days), uint40(28 days)];
         return uint40(durations[durationIdx]);
     }
 
@@ -142,7 +141,7 @@ contract CallPool is ICallPool, Pausable {
         uint8 maximumDurationIdx,
         uint256 minimumStrikePrice
     ) internal returns(uint256){
-        if(minimumStrikePrice > MAXIMUM_STRIKE_PRICE){
+        if(minimumStrikePrice > MAXIMUM_STRIKE_PRICE_IN_CONTRACT_DECIMALS){
             return ErrorCodes.CP_PRICE_TOO_HIGH;
         }
         DataTypes.NFTStatusMap memory status = DataTypes.NFTStatusMap(DataTypes.NFT_STATUS_MAP_INIT_VALUE);
@@ -394,7 +393,7 @@ contract CallPool is ICallPool, Pausable {
                 if(strikePrice < convertFromStrikePrice(status.getMinimumStrikePrice())){
                     errorCode = ErrorCodes.CP_STRIKE_PRICE_TOO_LOW;
                 }
-                else if(strikePrice > MAXIMUM_STRIKE_PRICE){
+                else if(strikePrice > MAXIMUM_STRIKE_PRICE_IN_CONTRACT_DECIMALS){
                     errorCode = ErrorCodes.CP_PRICE_TOO_HIGH;
                 }
                 else{
@@ -483,7 +482,7 @@ contract CallPool is ICallPool, Pausable {
         uint256 premiumToReserve,
         uint256 premiumToOwner
     ){
-        require(uint256(strikePriceGapIdx) <= DataTypes.MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX && uint256(durationIdx) <= DataTypes.MAXIMUM_VALID_DURATION_IDX, Errors.CP_GAP_OR_DURATION_OUT_OF_INDEX);
+        require(uint256(strikePriceGapIdx) <= MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX && uint256(durationIdx) <= MAXIMUM_VALID_DURATION_IDX, Errors.CP_GAP_OR_DURATION_OUT_OF_INDEX);
 
         IPriceOracle _oracle = IPriceOracle(oracle);
         uint256 vol = _oracle.getAssetVol(nft);

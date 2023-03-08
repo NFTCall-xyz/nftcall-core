@@ -1,13 +1,13 @@
 //SPDX-License-Identifier: BUSL-1.1
 pragma solidity 0.8.9;
 
+uint256 constant MAXIMUM_VALID_DURATION_IDX = 3;
+uint256 constant MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX = 5;
+
+uint256 constant STRIKE_PRICE_DECIMALS = 9;
+uint256 constant MAXIMUM_STRIKE_PRICE = type(uint64).max;
+
 library DataTypes {
-
-    uint256 public constant MAXIMUM_VALID_DURATION_IDX = 3;
-    uint256 public constant MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX = 5;
-
-    uint256 public constant STRIKE_PRICE_DECIMALS = 9;
-    uint256 public constant MAXIMUM_STRIKE_PRICE = type(uint64).max;
 
     // Used to store nft availability and related call NFT. Here needs to consider data compression
     struct NFTStatusMap {
