@@ -2,6 +2,8 @@
 pragma solidity ^0.8.9;
 
 interface INToken {
+    function factory() external view returns(address);
+    
     function nft() external view returns(address);
 
     event Mint(address indexed from, uint256 tokenId);

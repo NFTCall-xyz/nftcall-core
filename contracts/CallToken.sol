@@ -7,8 +7,13 @@ import {IERC721Enumerable} from "@openzeppelin/contracts/token/ERC721/extensions
 import {ICallToken} from "./interfaces/ICallToken.sol";
 import {ICallPoolDeployer} from "./interfaces/ICallPoolDeployer.sol";
 import {ICallPoolState} from "./interfaces/pool/ICallPoolState.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {Errors} from "./Errors.sol";
 
 contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
+    using Strings for uint256;
+
+    address public immutable override factory;
     address public immutable override nft;
 
     // Array with all token ids, used for enumeration
@@ -17,8 +22,15 @@ contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
     // Mapping from token id to position in the allTokens array
     mapping(uint256 => uint256) private _allTokensIndex;
 
+    string private _baseTokenURI;
+
     constructor() ERC721("CallToken", "CT") Ownable() {
-        (, nft, , , ,) = ICallPoolDeployer(msg.sender).parameters();
+        (factory, nft, , , ,) = ICallPoolDeployer(msg.sender).parameters();
+    }
+
+    modifier onlyFactoryOwner() {
+        require(_msgSender() == Ownable(factory).owner(), Errors.CP_CALLER_IS_NOT_FACTORY_OWNER);
+        _;
     }
 
     function name() public view override returns (string memory) {
@@ -31,7 +43,9 @@ contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        return IERC721Metadata(nft).tokenURI(tokenId);
+        require(block.timestamp <= ICallPoolState(Ownable.owner()).getEndTime(tokenId), "token is expired");
+        string memory baseURI = _baseTokenURI;
+        return bytes(baseURI).length > 0 ? string(abi.encodePacked(baseURI, tokenId.toString())) : "";
     }
 
     function ownerOf(uint256 tokenId) public view virtual override(IERC721, ERC721) returns(address) {
@@ -208,6 +222,12 @@ contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
     }
 
     function open( address user, uint256 tokenId) external override onlyOwner {
+        emit MetadataUpdate(tokenId);
         _transfer(ERC721.ownerOf(tokenId), user, tokenId);
+    }
+
+    function updateBaseURI(string calldata baseURI) external override onlyFactoryOwner {
+        _baseTokenURI = baseURI;
+        emit BaseURIUpdated(baseURI);
     }
 }

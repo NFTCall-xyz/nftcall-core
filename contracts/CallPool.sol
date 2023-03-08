@@ -470,10 +470,6 @@ contract CallPool is ICallPool, Pausable {
         }
     }
 
-    function transferERC721(address collection, address recipient, uint256 tokenId) external override onlyFactoryOwner {
-        NToken(nToken).transferERC721(collection, recipient, tokenId);
-    }
-
     function _calculatePremium(
         uint8 strikePriceGapIdx,
         uint8 durationIdx

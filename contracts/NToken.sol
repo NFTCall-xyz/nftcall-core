@@ -8,12 +8,19 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "./interfaces/ICallPoolDeployer.sol";
 import "./interfaces/INToken.sol";
+import "./Errors.sol";
 
 contract NToken is ERC721, INToken, Ownable, IERC721Receiver {
+    address public immutable override factory;
     address public immutable override nft;
+    
+    modifier onlyFactoryOwner() {
+        require(_msgSender() == Ownable(factory).owner(), Errors.CP_CALLER_IS_NOT_FACTORY_OWNER);
+        _;
+    }
 
     constructor() ERC721("NToken", "N") Ownable() {
-        (, nft, , , ,) = ICallPoolDeployer(msg.sender).parameters();
+        (factory, nft, , , ,) = ICallPoolDeployer(msg.sender).parameters();
     }
 
     function name() public view override returns (string memory) {
@@ -40,7 +47,7 @@ contract NToken is ERC721, INToken, Ownable, IERC721Receiver {
         IERC721(nft).safeTransferFrom(address(this), receiverOfUnderlying, tokenId);
     }
 
-    function transferERC721(address collection, address recipient, uint256 tokenId) public override onlyOwner{
+    function transferERC721(address collection, address recipient, uint256 tokenId) public override onlyFactoryOwner{
         require(collection != nft || !_exists(tokenId), "Can only transfer NFT that have been accidentally sent.");
         require(recipient != address(0), "Cannot use zero address as recipient.");
         IERC721(collection).safeTransferFrom(address(this), recipient, tokenId);
