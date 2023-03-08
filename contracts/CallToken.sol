@@ -229,5 +229,6 @@ contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
     function updateBaseURI(string calldata baseURI) external override onlyFactoryOwner {
         _baseTokenURI = baseURI;
         emit BaseURIUpdated(baseURI);
+        emit BatchMetadataUpdate(0, type(uint256).max);
     }
 }
