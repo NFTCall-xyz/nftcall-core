@@ -18,7 +18,7 @@ import {Errors, ErrorCodes} from "./Errors.sol";
 import {DataTypes, MAXIMUM_VALID_DURATION_IDX, MAXIMUM_VALID_STRIKE_PRICE_GAP_IDX, STRIKE_PRICE_DECIMALS, MAXIMUM_STRIKE_PRICE} from "./DataTypes.sol";
 import {NFTStatus} from "./NFTStatus.sol";
 
-contract CallPool is ICallPool, Pausable {
+contract CallPool is ICallPool, Pausable, ReentrancyGuard {
     using NFTStatus for DataTypes.NFTStatusMap; 
     address public immutable override factory;
     address public immutable override nft;
@@ -123,7 +123,7 @@ contract CallPool is ICallPool, Pausable {
         require(errorCode == 0, Strings.toString(errorCode));
     }
 
-    function depositBatch(address onBehalfOf, uint256[] calldata tokenIds) external override  whenNotPaused whenActivated returns(uint256[] memory) {
+    function depositBatch(address onBehalfOf, uint256[] calldata tokenIds) external override  whenNotPaused whenActivated nonReentrant returns(uint256[] memory) {
         require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         uint256[] memory errorCodes = new uint256[](tokenIds.length);
         for(uint256 i = 0; i < tokenIds.length; ++i) {
@@ -196,7 +196,7 @@ contract CallPool is ICallPool, Pausable {
     }
 
     // Withdraw NFT
-    function withdrawBatch(address to, uint256[] calldata tokenIds) external override whenNotPaused returns(uint256[] memory){
+    function withdrawBatch(address to, uint256[] calldata tokenIds) external override whenNotPaused nonReentrant returns(uint256[] memory){
         require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         uint256[] memory errorCodes = new uint256[](tokenIds.length);
         address user = _msgSender();
@@ -486,7 +486,7 @@ contract CallPool is ICallPool, Pausable {
 
     // Exercise a call position
     // To avoid reentrancy attack, we can not use the amount in the _balanceOf[user] to pay the strike price.
-    function exerciseCallBatch(uint256[] calldata tokenIds) external payable override whenNotPaused whenActivated returns(uint256[] memory){
+    function exerciseCallBatch(uint256[] calldata tokenIds) external payable override whenNotPaused whenActivated nonReentrant returns(uint256[] memory){
         require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         address user = _msgSender();
         uint256 remainValue = msg.value;
