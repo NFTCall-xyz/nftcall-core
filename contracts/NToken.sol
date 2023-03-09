@@ -19,12 +19,12 @@ contract NToken is ERC721, INToken, Ownable, IERC721Receiver {
         _;
     }
 
-    constructor() ERC721("NToken", "N") Ownable() {
+    constructor() ERC721("NFTCall Wrapped ", "n") Ownable() {
         (factory, nft, , , ,) = ICallPoolDeployer(msg.sender).parameters();
     }
 
     function name() public view override returns (string memory) {
-        return string(abi.encodePacked(ERC721.name(), " ", IERC721Metadata(nft).name()));
+        return string(abi.encodePacked(ERC721.name(), IERC721Metadata(nft).name()));
 
     }
 

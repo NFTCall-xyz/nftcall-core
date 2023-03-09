@@ -24,7 +24,7 @@ contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
 
     string private _baseTokenURI;
 
-    constructor() ERC721("CallToken", "CT") Ownable() {
+    constructor() ERC721("NFTCall ", "call") Ownable() {
         (factory, nft, , , ,) = ICallPoolDeployer(msg.sender).parameters();
     }
 
@@ -34,7 +34,7 @@ contract CallToken is ERC721, IERC721Enumerable, ICallToken, Ownable {
     }
 
     function name() public view override returns (string memory) {
-        return string(abi.encodePacked(ERC721.name(), " ", IERC721Metadata(nft).name()));
+        return string(abi.encodePacked(ERC721.name(), IERC721Metadata(nft).name(), " Call"));
 
     }
 
