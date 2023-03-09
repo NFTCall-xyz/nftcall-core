@@ -34,6 +34,8 @@ library Errors {
     string public constant CP_ZERO_SIZED_ARRAY = "21";
 
     string public constant CP_UNABLE_TO_TRANSFER_ETH = "22";
+
+    string public constant CP_NOT_ENOUGH_OR_TOO_MUCH_ETH = "23";
 }
 
 library ErrorCodes {
@@ -69,4 +71,6 @@ library ErrorCodes {
     uint256 public constant CP_ZERO_SIZED_ARRAY = 21;
 
     uint256 public constant CP_UNABLE_TO_TRANSFER_ETH = 22;
+    
+    uint256 public constant CP_NOT_ENOUGH_OR_TOO_MUCH_ETH = 23;
 }

@@ -481,7 +481,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
     function exerciseCall(uint256 tokenId) external payable override whenNotPaused whenActivated {
         (uint256 errorCode, uint256 remainValue) = _exerciseCall(_msgSender(), tokenId, msg.value, block.timestamp);
         require(errorCode == 0, Strings.toString(errorCode));
-        require(remainValue == 0, Errors.CP_DID_NOT_SEND_ENOUGH_ETH);
+        require(remainValue == 0, Errors.CP_NOT_ENOUGH_OR_TOO_MUCH_ETH);
     }
 
     // Exercise a call position
