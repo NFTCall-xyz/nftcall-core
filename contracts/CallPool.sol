@@ -118,7 +118,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
     }
 
     // Deposit NFT
-    function deposit(address onBehalfOf, uint256 tokenId) external override whenNotPaused whenActivated {
+    function deposit(address onBehalfOf, uint256 tokenId) external override whenNotPaused whenActivated nonReentrant {
         uint256 errorCode = _deposit(onBehalfOf, tokenId, 1, 3, 0);
         require(errorCode == 0, Strings.toString(errorCode));
     }
@@ -138,7 +138,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
         uint8 lowerStrikePriceGapIdx,
         uint8 upperDurationIdx,
         uint256 minimumStrikePrice
-    ) external override whenNotPaused whenActivated {
+    ) external override whenNotPaused whenActivated nonReentrant{
         uint256 errorCode = _deposit(onBehalfOf, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice);
         require(errorCode == 0, Strings.toString(errorCode));
     }
@@ -149,7 +149,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
         uint8[] calldata lowerStrikePriceGapIdxList,
         uint8[] calldata upperDurationIdxList,
         uint256[] calldata minimumStrikePriceList
-    ) external override whenNotPaused whenActivated returns(uint256[] memory){
+    ) external override whenNotPaused whenActivated nonReentrant returns(uint256[] memory){
         require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         require(tokenIds.length == lowerStrikePriceGapIdxList.length 
                 && tokenIds.length == upperDurationIdxList.length 
@@ -190,7 +190,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
     }
 
     // Withdraw NFT
-    function withdraw(address to, uint256 tokenId) external override whenNotPaused {
+    function withdraw(address to, uint256 tokenId) external override whenNotPaused nonReentrant{
         uint256 errorCode = _withdraw(_msgSender(), to, tokenId, block.timestamp);
         require(errorCode == 0, Strings.toString(errorCode));
     }
@@ -282,7 +282,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
         return 0;
     }
 
-    function relistNFT(uint256 tokenId) external override whenNotPaused whenActivated {
+    function relistNFT(uint256 tokenId) external override whenNotPaused whenActivated{
         uint256 errorCode = _relistNFT(_msgSender(), tokenId);
         require(errorCode == 0, Strings.toString(errorCode));
     }
@@ -320,7 +320,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
         uint256 tokenId,
         uint8 strikePriceGapIdx,
         uint8 durationIdx
-    ) external payable override whenNotPaused whenActivated {
+    ) external payable override whenNotPaused whenActivated{
         OpenCallLocalVars memory vars;
         (
             vars.strikePrice,
@@ -354,7 +354,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
         uint256[] calldata tokenIds,
         uint8[] calldata strikePriceGaps,
         uint8[] calldata durations
-    ) external payable override whenNotPaused whenActivated {
+    ) external payable override whenNotPaused whenActivated{
         require(tokenIds.length != 0, Errors.CP_ZERO_SIZED_ARRAY);
         require(tokenIds.length == strikePriceGaps.length && tokenIds.length == durations.length, Errors.CP_ARRAY_LENGTH_UNMATCHED);
         uint256 totalPremium = 0;
@@ -478,7 +478,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
     }
 
     // Exercise a call position
-    function exerciseCall(uint256 tokenId) external payable override whenNotPaused whenActivated {
+    function exerciseCall(uint256 tokenId) external payable override whenNotPaused whenActivated nonReentrant{
         (uint256 errorCode, uint256 remainValue) = _exerciseCall(_msgSender(), tokenId, msg.value, block.timestamp);
         require(errorCode == 0, Strings.toString(errorCode));
         require(remainValue == 0, Errors.CP_NOT_ENOUGH_OR_TOO_MUCH_ETH);
@@ -604,7 +604,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
         uint8 lowerStrikePriceGapIdx,
         uint8 upperDurationIdx,
         uint256 minimumStrikePrice
-    ) external override whenNotPaused whenActivated {
+    ) external override whenNotPaused whenActivated{
         address user = _msgSender();
         uint256 currentTime = block.timestamp;
         uint256 errorCode = _changePreference(user, tokenId, lowerStrikePriceGapIdx, upperDurationIdx, minimumStrikePrice, currentTime);
