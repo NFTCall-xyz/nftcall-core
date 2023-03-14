@@ -239,7 +239,7 @@ contract CallPool is ICallPool, Pausable, ReentrancyGuard {
     function withdrawETH(
         address to,
         uint256 amount
-    ) external override whenNotPaused returns(uint256) {
+    ) external override whenNotPaused nonReentrant returns(uint256) {
         require(amount != 0, Errors.CP_INVALID_AMOUNT);
         require(to != address(0), Errors.CP_INVALID_RECEIVER);
         uint256 userBalance = _balanceOf[_msgSender()];
